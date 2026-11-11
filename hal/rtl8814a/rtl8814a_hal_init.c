@@ -2298,6 +2298,8 @@ hal_EfuseParseXtal_8814A(
 	{
 		pHalData->crystal_cap = EEPROM_Default_CrystalCap_8814;
 	}
+	if (pAdapter->registrypriv.xtal_cap != 0xFF)
+		pHalData->crystal_cap = pAdapter->registrypriv.xtal_cap & 0x3F;
 	RTW_INFO("crystal_cap: 0x%2x\n", pHalData->crystal_cap);
 }
 

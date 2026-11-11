@@ -348,6 +348,7 @@ struct registry_priv {
 	u8	AmplifierType_5G;
 	u8	bEn_RFE;
 	u8	RFE_Type;
+	u8	xtal_cap;	/* 0xFF: crystal cap from EEPROM */
 	u8	PowerTracking_Type;
 	u8	GLNA_Type;
 	u8  check_fw_ps;

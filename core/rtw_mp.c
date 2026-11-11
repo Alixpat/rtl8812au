@@ -938,6 +938,7 @@ s32 mp_start_test(PADAPTER padapter)
 	s32 res = _SUCCESS;
 
 	padapter->registrypriv.mp_mode = 1;
+	pmppriv->first_tx_after_start = _TRUE;
 
 	init_mp_data(padapter);
 #ifdef CONFIG_RTL8814A
@@ -1911,11 +1912,21 @@ void SetPacketTx(PADAPTER padapter)
 	_rtw_memcpy(pattrib->ta, pattrib->src, ETH_ALEN);
 	_rtw_memcpy(pattrib->ra, pattrib->dst, ETH_ALEN);
 	bmcast = IS_MCAST(pattrib->ra);
-	if (bmcast)
+	if (bmcast) {
 		pattrib->psta = rtw_get_bcmc_stainfo(padapter);
-	else
+		if (pattrib->psta == NULL) {
+			/* bcmc sta may have been freed (e.g. after a disconnect) */
+			rtw_init_bcmc_stainfo(padapter);
+			pattrib->psta = rtw_get_bcmc_stainfo(padapter);
+		}
+	} else
 		pattrib->psta = rtw_get_stainfo(&padapter->stapriv, get_bssid(&padapter->mlmepriv));
 
+	if (pattrib->psta == NULL) {
+		RTW_INFO("%s: no sta_info, abort MP TX\n", __func__);
+		pmp_priv->tx.stop = 1;
+		return;
+	}
 	pattrib->mac_id = pattrib->psta->cmn.mac_id;
 	pattrib->mbssid = 0;
 
@@ -2069,6 +2080,35 @@ void SetPacketTx(PADAPTER padapter)
 	Rtw_MPSetMacTxEDCA(padapter);
 exit:
 	return;
+}
+
+/*
+ * The first frame sent after mp_start (which re-initializes the chip)
+ * never goes on air. Send a dummy frame before the first MP TX, and wait
+ * for it, so that the requested number of frames is really transmitted
+ * and continuous TX modes start on the first try.
+ */
+void rtw_mp_tx_first_frame(PADAPTER padapter)
+{
+	struct mp_priv *pmp_priv = &padapter->mppriv;
+	u32 count = pmp_priv->tx.count;
+	int i;
+
+	if (!pmp_priv->first_tx_after_start)
+		return;
+	pmp_priv->first_tx_after_start = _FALSE;
+
+	pmp_priv->tx.stop = 0;
+	pmp_priv->tx.count = 1;
+	SetPacketTx(padapter);
+	/* the TX thread sets tx.stop when it is done */
+	for (i = 0; i < 50 && !pmp_priv->tx.stop; i++)
+		rtw_msleep_os(2);
+	if (!pmp_priv->tx.stop) {
+		pmp_priv->tx.stop = 1;
+		rtw_msleep_os(5);
+	}
+	pmp_priv->tx.count = count;
 }
 
 void SetPacketRx(PADAPTER pAdapter, u8 bStartRx, u8 bAB)
@@ -2366,6 +2406,12 @@ static u32 rtw_GetPSDData(PADAPTER pAdapter, u32 point)
 }
 
 /*
+ * Size of the reply buffer: the private ioctl reply is at most
+ * IW_PRIV_SIZE_MASK (2047) bytes.
+ */
+#define MP_PSD_BUF_SIZE 2047
+
+/*
  * pts	start_point_min		stop_point_max
  * 128	64			64 + 128 = 192
  * 256	128			128 + 256 = 384
@@ -2406,11 +2452,20 @@ u32 mp_query_psd(PADAPTER pAdapter, u8 *data)
 
 	i = psd_start;
 	while (i < psd_stop) {
+		u32 len = strlen(data);
+		int n;
+
 		if (i >= psd_pts)
 			psd_data = rtw_GetPSDData(pAdapter, i - psd_pts);
 		else
 			psd_data = rtw_GetPSDData(pAdapter, i);
-		sprintf(data + strlen(data), "%x ", psd_data);
+		n = snprintf(data + len, MP_PSD_BUF_SIZE - len, "%x ",
+			     psd_data);
+		if (n < 0 || n >= MP_PSD_BUF_SIZE - len) {
+			/* reply buffer full: drop the partial value and stop */
+			data[len] = '\0';
+			break;
+		}
 		i++;
 	}
 

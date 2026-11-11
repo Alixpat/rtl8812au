@@ -578,6 +578,10 @@ uint rtw_RFE_type = CONFIG_RTW_RFE_TYPE;
 module_param(rtw_RFE_type, uint, 0644);
 MODULE_PARM_DESC(rtw_RFE_type, "default init value:64");
 
+uint rtw_xtal_cap = 0xff;
+module_param(rtw_xtal_cap, uint, 0644);
+MODULE_PARM_DESC(rtw_xtal_cap, "crystal cap (0-63) overriding the EEPROM value, 255 (default): EEPROM value");
+
 uint rtw_powertracking_type = 64;
 module_param(rtw_powertracking_type, uint, 0644);
 MODULE_PARM_DESC(rtw_powertracking_type, "default init value:64");
@@ -1126,6 +1130,7 @@ uint loadparam(_adapter *padapter)
 	registry_par->TxBBSwing_5G = (s8)rtw_TxBBSwing_5G;
 	registry_par->bEn_RFE = 1;
 	registry_par->RFE_Type = (u8)rtw_RFE_type;
+	registry_par->xtal_cap = (u8)rtw_xtal_cap;
 	registry_par->PowerTracking_Type = (u8)rtw_powertracking_type;
 	registry_par->AmplifierType_2G = (u8)rtw_amplifier_type_2g;
 	registry_par->AmplifierType_5G = (u8)rtw_amplifier_type_5g;
